@@ -35,7 +35,11 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { canSubmitBlockchainAction, filterAndSortMarkets } from "@/lib/marketUtils";
 import { fallbackMarkets, loadScannerMarkets, type ScannerMarket } from "@/lib/scannerData";
-import { connectInjectedWallet } from "@/lib/web3";
+import { ARC_MAINNET_ENABLED, connectInjectedWallet, getInjectedProvider, switchInjectedChain } from "@/lib/web3";
+import { ARC_CHAIN_ID, BSC_CHAIN_ID, getLifiQuote, type LifiQuote } from "@/lib/lifi";
+import { type BridgeStatus } from "@/lib/lifiState";
+import { allowanceCallData, allowanceNeedsApproval, approveCallData, isNativeToken } from "@/lib/approval";
+import { fetchTokenMetadata, type TokenMetadata } from "@/lib/tokenData";
 
 const LOGO_URL = "/manus-storage/dex-arc-logo_50eb4c95.jpg";
 
@@ -91,6 +95,7 @@ export default function Home() {
   const [selectedPair, setSelectedPair] = useState(markets[0]);
   const [wallet, setWallet] = useState<string | null>(null);
   const [walletIsArc, setWalletIsArc] = useState(false);
+  const [walletChainId, setWalletChainId] = useState("");
   const [walletDialog, setWalletDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
@@ -100,15 +105,24 @@ export default function Home() {
   const [toChain, setToChain] = useState("ARC Mainnet");
   const [slippage, setSlippage] = useState("0.50");
   const [bridgeAmount, setBridgeAmount] = useState("1000");
-  const [bridgeStatus, setBridgeStatus] = useState<"idle" | "ready" | "awaiting-wallet" | "wrong-network" | "provider-opened">("idle");
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("idle");
+  const [lifiQuote, setLifiQuote] = useState<LifiQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [swapAmount, setSwapAmount] = useState("1");
+  const [swapQuote, setSwapQuote] = useState<LifiQuote | null>(null);
+  const [swapQuoteLoading, setSwapQuoteLoading] = useState(false);
+  const [swapStatus, setSwapStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [liveMarkets, setLiveMarkets] = useState<ScannerMarket[]>(markets);
-  const [dataSource, setDataSource] = useState(import.meta.env.VITE_ARC_SCANNER_API_URL ? "ARC scanner provider" : "Preview fallback");
+  const [dataSource, setDataSource] = useState(import.meta.env.VITE_ARC_SCANNER_API_URL ? "ARC scanner provider" : "Manual/import mode");
+  const [tokenQuery, setTokenQuery] = useState("");
+  const [tokenLoading, setTokenLoading] = useState(false);
+  const [importedToken, setImportedToken] = useState<TokenMetadata | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     loadScannerMarkets(controller.signal).then((rows) => {
       setLiveMarkets(rows);
-      setDataSource(import.meta.env.VITE_ARC_SCANNER_API_URL ? "ARC scanner provider" : "Preview fallback");
+      setDataSource(import.meta.env.VITE_ARC_SCANNER_API_URL ? "ARC scanner provider" : "Manual/import mode");
     });
     return () => controller.abort();
   }, []);
@@ -121,9 +135,89 @@ export default function Home() {
     if (match) setSelectedPair(match);
   }, [liveMarkets, pairParams?.address]);
 
+  const handleTokenLookup = async () => {
+    if (!tokenQuery.trim()) {
+      toast.info("Paste an ARC token contract address", { description: "Use the 0x address from the ARC Mainnet explorer." });
+      return;
+    }
+    setTokenLoading(true);
+    try {
+      const token = await fetchTokenMetadata(tokenQuery);
+      setImportedToken(token);
+      toast.success("Token imported", { description: `${token.symbol} is ready to inspect${token.source === "manual" ? " once an ARC RPC is configured" : " from ARC Mainnet RPC"}.` });
+    } catch (error) {
+      toast.error("Token lookup failed", { description: error instanceof Error ? error.message : "The address could not be resolved." });
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
+  const chainIdForName = (name: string) => ({ BSC: BSC_CHAIN_ID, Ethereum: 1, Base: 8453, Arbitrum: 42161 }[name] || 1);
+  const sourceUsdcForChain = (name: string) => name === "BSC" ? "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d" : "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  const arcUsdc = "0x3600000000000000000000000000000000000000";
+
+  const fetchBridgeQuote = async () => {
+    const provider = getInjectedProvider();
+    const accounts = provider ? await provider.request({ method: "eth_accounts" }) as string[] : [];
+    if (!accounts[0]) {
+      setBridgeStatus("awaiting-wallet");
+      toast.info("Connect your wallet first", { description: "LI.FI uses the connected address for quote and transaction routing." });
+      return;
+    }
+    setQuoteLoading(true);
+    setBridgeStatus("loading");
+    try {
+      const decimals = 6;
+      const amount = BigInt(Math.max(0, Number(bridgeAmount || 0)) * 10 ** decimals).toString();
+      const quote = await getLifiQuote({ fromChain: chainIdForName(fromChain), toChain: ARC_CHAIN_ID, fromToken: sourceUsdcForChain(fromChain), toToken: arcUsdc, fromAddress: accounts[0], fromAmount: amount, slippage: Number(slippage) / 100 });
+      setLifiQuote(quote);
+      setBridgeStatus("ready");
+      toast.success("LI.FI quote ready", { description: `${fromChain} → Arc route found${quote.tool?.name ? ` via ${quote.tool.name}` : ""}.` });
+    } catch (error) {
+      setLifiQuote(null);
+      setBridgeStatus("unavailable");
+      toast.error("No LI.FI route available", { description: error instanceof Error ? error.message : "Try another source chain or amount." });
+    } finally {
+      setQuoteLoading(false);
+    }
+  };
+
+  const fetchSwapQuote = async () => {
+    const provider = getInjectedProvider();
+    const accounts = provider ? await provider.request({ method: "eth_accounts" }) as string[] : [];
+    if (!accounts[0]) {
+      toast.info("Connect your wallet first", { description: "LI.FI uses your wallet address to simulate the swap route." });
+      return;
+    }
+    if (fromToken === toToken) {
+      toast.info("Choose two different tokens", { description: "Select a different input or output asset before requesting a quote." });
+      return;
+    }
+    setSwapQuoteLoading(true);
+    setSwapStatus("loading");
+    try {
+      const inputIsUsdc = fromToken === "USDC";
+      const outputIsUsdc = toToken === "USDC";
+      const fromTokenAddress = inputIsUsdc ? arcUsdc : importedToken?.address || selectedPair.address;
+      const toTokenAddress = outputIsUsdc ? arcUsdc : importedToken?.address || selectedPair.address;
+      const decimals = inputIsUsdc ? 6 : importedToken?.decimals || 18;
+      const amount = BigInt(Math.max(0, Number(swapAmount || 0)) * 10 ** decimals).toString();
+      const quote = await getLifiQuote({ fromChain: ARC_CHAIN_ID, toChain: ARC_CHAIN_ID, fromToken: fromTokenAddress, toToken: toTokenAddress, fromAddress: accounts[0], fromAmount: amount, slippage: Number(slippage) / 100 });
+      setSwapQuote(quote);
+      setSwapStatus("ready");
+      toast.success("LI.FI swap quote ready", { description: `${fromToken} → ${toToken}${quote.tool?.name ? ` via ${quote.tool.name}` : ""}.` });
+    } catch (error) {
+      setSwapQuote(null);
+      setSwapStatus("unavailable");
+      toast.error("No LI.FI swap route available", { description: error instanceof Error ? error.message : "Try a supported token pair." });
+    } finally {
+      setSwapQuoteLoading(false);
+    }
+  };
+
   const requestAction = (action: string) => {
     setPendingAction(action);
-    if (action.toLowerCase().includes("bridge")) setBridgeStatus(wallet ? (walletIsArc ? "ready" : "wrong-network") : "awaiting-wallet");
+    if (action.toLowerCase().includes("bridge")) setBridgeStatus(wallet ? "ready" : "awaiting-wallet");
     setWalletDialog(true);
   };
 
@@ -133,6 +227,7 @@ export default function Home() {
       if (!result.account) throw new Error("The wallet returned no account.");
       setWallet(result.account);
       setWalletIsArc(result.isArcMainnet);
+      setWalletChainId(result.chainId);
       setWalletDialog(false);
       toast.success(result.isArcMainnet ? "Wallet connected" : "Wallet connected on another network", { description: result.isArcMainnet ? "ARC Mainnet detected. Blockchain actions still require confirmation." : "Switch to ARC Mainnet before swapping or bridging." });
     } catch (error) {
@@ -140,19 +235,57 @@ export default function Home() {
     }
   };
 
-  const confirmPendingAction = () => {
-    if (!wallet) {
-      if (pendingAction?.toLowerCase().includes("bridge")) setBridgeStatus("awaiting-wallet");
-      void connectWallet();
+  const confirmPendingAction = async () => {
+    if (!ARC_MAINNET_ENABLED) {
+      toast.error("ARC Mainnet provider is not configured", { description: "Official mainnet RPC and audited swap/bridge deployment details are required before any transaction can be signed." });
       return;
     }
-    if (!walletIsArc) {
-      if (pendingAction?.toLowerCase().includes("bridge")) setBridgeStatus("wrong-network");
-      toast.error("Wrong network", { description: "Switch your wallet to ARC Mainnet before continuing." });
+    if (!wallet) {
+      if (pendingAction?.toLowerCase().includes("bridge")) setBridgeStatus("awaiting-wallet");
+      await connectWallet();
       return;
     }
     const isBridge = pendingAction?.toLowerCase().includes("bridge");
-    const providerUrl = isBridge ? (import.meta.env.VITE_BRIDGE_PROVIDER_URL || "https://www.circle.com/en/cross-chain-transfer-protocol") : (import.meta.env.VITE_SWAP_PROVIDER_URL || "https://app.uniswap.org/swap?chain=arc");
+    const expectedChainId = isBridge ? chainIdForName(fromChain) : ARC_CHAIN_ID;
+    const currentChainId = Number.parseInt(walletChainId, 16);
+    if (currentChainId !== expectedChainId) {
+      try {
+        await switchInjectedChain(expectedChainId);
+        setWalletChainId(`0x${expectedChainId.toString(16)}`);
+      } catch (error) {
+        if (isBridge) setBridgeStatus("wrong-network");
+        toast.error("Switch network to continue", { description: `Your wallet must be on ${isBridge ? fromChain : "ARC Mainnet"} before signing.` });
+        return;
+      }
+    }
+    const tx = (isBridge ? lifiQuote : swapQuote)?.transactionRequest;
+    const provider = getInjectedProvider();
+    if ((isBridge || Boolean(swapQuote)) && tx?.to && tx.data && provider) {
+      try {
+        const quote = isBridge ? lifiQuote : swapQuote;
+        const approvalAddress = quote?.estimate?.approvalAddress;
+        const inputToken = isBridge ? sourceUsdcForChain(fromChain) : fromToken === "USDC" ? arcUsdc : importedToken?.address || selectedPair.address;
+        const inputDecimals = isBridge || fromToken === "USDC" ? 6 : importedToken?.decimals || 18;
+        const inputAmount = BigInt(Math.max(0, Number(isBridge ? bridgeAmount : swapAmount) || 0) * 10 ** inputDecimals).toString();
+        if (approvalAddress && !isNativeToken(inputToken)) {
+          const allowance = await provider.request({ method: "eth_call", params: [{ to: inputToken, data: allowanceCallData(wallet, approvalAddress) }, "latest"] }) as string;
+          if (allowanceNeedsApproval(BigInt(allowance || "0x0"), inputAmount)) {
+            const approvalHash = await provider.request({ method: "eth_sendTransaction", params: [{ from: wallet, to: inputToken, data: approveCallData(approvalAddress, BigInt(inputAmount).toString(16)) }] });
+            toast.success("Approval requested", { description: `Confirm approval in your wallet, then review the ${isBridge ? "bridge" : "swap"} again. ${String(approvalHash).slice(0, 12)}…` });
+            return;
+          }
+        }
+        const txHash = await provider.request({ method: "eth_sendTransaction", params: [{ from: wallet, to: tx.to, data: tx.data, value: tx.value || "0x0", ...(tx.gasLimit ? { gas: tx.gasLimit } : {}), ...(tx.gasPrice ? { gasPrice: tx.gasPrice } : {}) }] });
+        setBridgeStatus("provider-opened");
+        setWalletDialog(false);
+        toast.success("LI.FI transaction submitted", { description: `Review the transaction on Arc Explorer: ${String(txHash).slice(0, 12)}…` });
+        return;
+      } catch (error) {
+        toast.error("Wallet rejected the LI.FI transaction", { description: error instanceof Error ? error.message : "No transaction was submitted." });
+        return;
+      }
+    }
+    const providerUrl = isBridge ? (import.meta.env.VITE_BRIDGE_PROVIDER_URL || "https://li.fi/bridge") : (import.meta.env.VITE_SWAP_PROVIDER_URL || "https://li.fi/swap");
     window.open(providerUrl, "_blank", "noopener,noreferrer");
     if (isBridge) setBridgeStatus("provider-opened");
     setWalletDialog(false);
@@ -166,7 +299,7 @@ export default function Home() {
 
     <header className="sticky top-0 z-30 border-b border-white/[.07] bg-[#071014]/85 backdrop-blur-xl">
       <div className="mx-auto flex h-[72px] max-w-[1540px] items-center gap-5 px-4 sm:px-6 xl:px-8">
-        <div className="flex shrink-0 items-center gap-3"><LogoMark /><div><div className="flex items-center gap-2"><span className="text-[15px] font-bold tracking-[.16em] text-white">DEX <span className="text-cyan-300">ARC</span></span><span className="rounded-full border border-lime-300/30 bg-lime-300/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-lime-300">Beta</span></div><p className="mt-0.5 hidden text-[10px] uppercase tracking-[.2em] text-slate-600 sm:block">Market intelligence terminal</p></div></div>
+        <div className="flex shrink-0 items-center gap-3"><LogoMark /><div><div className="flex items-center gap-2"><span className="text-[15px] font-bold tracking-[.16em] text-white">DEX <span className="text-cyan-300">ARC</span></span><span className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-cyan-200">Mainnet</span></div><p className="mt-0.5 hidden text-[10px] uppercase tracking-[.2em] text-slate-600 sm:block">Market intelligence terminal</p></div></div>
         <div className="hidden items-center gap-1 rounded-xl border border-white/[.06] bg-white/[.025] p-1 lg:flex">{["Overview", "Markets", "Trending", "New Pairs"].map((item) => <button key={item} onClick={() => setActiveView(item)} className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${activeView === item ? "bg-white/10 text-white shadow-inner" : "text-slate-500 hover:text-slate-200"}`}>{item}{item === "New Pairs" && <span className="ml-1.5 rounded-full bg-lime-300 px-1.5 py-0.5 text-[9px] text-slate-950">18</span>}</button>)}</div>
         <div className="ml-auto flex items-center gap-2"><div className="hidden items-center gap-2 rounded-xl border border-white/[.07] bg-white/[.025] px-3 py-2 text-xs text-slate-400 md:flex"><span className={`h-2 w-2 rounded-full ${wallet && !walletIsArc ? "bg-rose-300" : "bg-lime-300 shadow-[0_0_10px_rgba(190,242,100,.7)]"}`} />{wallet && !walletIsArc ? "Wrong network" : "ARC Mainnet"} <ChevronDown size={14} className="text-slate-600" /></div><button className="hidden h-9 w-9 items-center justify-center rounded-xl border border-white/[.07] text-slate-400 transition hover:border-white/20 hover:text-white sm:flex"><Settings2 size={16} /></button><Button onClick={() => wallet ? toast.info("Wallet session", { description: `Connected as ${wallet}` }) : setWalletDialog(true)} className="h-9 rounded-xl border border-cyan-300/30 bg-cyan-300/10 px-3 text-xs font-bold text-cyan-200 hover:bg-cyan-300/20"> <Wallet size={15} className="mr-2" />{wallet ? formatWallet(wallet) : "Connect wallet"}</Button><button onClick={() => setMobileNav(!mobileNav)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/[.07] text-slate-400 lg:hidden">{mobileNav ? <X size={17} /> : <Menu size={17} />}</button></div>
       </div>
@@ -175,6 +308,8 @@ export default function Home() {
 
     <main className="relative mx-auto max-w-[1540px] px-4 pb-10 pt-7 sm:px-6 xl:px-8">
       <section className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.2em] text-cyan-300/80"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> ARC Mainnet terminal <span className="text-slate-700">/</span> {activeView}</div><h1 className="text-3xl font-semibold tracking-[-.04em] text-white sm:text-4xl">See the market <span className="gradient-text">before it moves.</span></h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">A fast, focused view of ARC liquidity, token momentum, and new pair activity—built for people who trade with context.</p></div><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-xl border border-white/[.07] bg-white/[.025] px-3 py-2 text-xs text-slate-500 sm:flex"><Clock3 size={14} className="text-slate-600" /> Updated 12 sec ago</div><Button variant="outline" onClick={() => toast.success("Market data refreshed", { description: "ARC Mainnet index is up to date." })} className="h-10 rounded-xl border-white/10 bg-white/[.025] text-slate-300 hover:bg-white/[.07] hover:text-white"><RefreshCw size={15} className="mr-2" /> Refresh</Button></div></section>
+
+      <section className="mb-7 glass-card overflow-hidden rounded-2xl border-cyan-300/10 p-4 sm:p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><Search size={18} /></div><div><p className="text-sm font-semibold text-white">Inspect an ARC Mainnet token</p><p className="mt-1 text-xs leading-5 text-slate-500">Paste an ERC-20 contract address to import metadata, inspect metrics, and prepare a confirmed swap.</p></div></div><div className="flex w-full gap-2 lg:max-w-xl"><Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void handleTokenLookup(); }} placeholder="0x token contract address" className="h-11 flex-1 rounded-xl border-white/[.08] bg-white/[.025] font-mono text-xs text-slate-200 placeholder:text-slate-600" /><Button onClick={() => void handleTokenLookup()} disabled={tokenLoading} className="h-11 rounded-xl bg-cyan-300 px-4 font-bold text-slate-950 hover:bg-cyan-200">{tokenLoading ? "Reading…" : "Search token"}</Button></div></div>{importedToken && <div className="mt-4 flex flex-col gap-3 rounded-xl border border-lime-300/15 bg-lime-300/[.04] p-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-lime-300" /><p className="text-xs font-semibold text-white">{importedToken.name} <span className="text-cyan-200">({importedToken.symbol})</span></p><Badge className="border border-lime-300/20 bg-lime-300/10 text-[9px] text-lime-300">{importedToken.source === "arc-rpc" ? "RPC verified" : "Address imported"}</Badge></div><p className="mt-1 font-mono text-[10px] text-slate-500">{importedToken.address} · {importedToken.decimals} decimals</p></div><Button onClick={() => requestAction(`Swap ${importedToken.symbol}`)} className="h-9 rounded-lg bg-lime-300 px-3 text-xs font-bold text-slate-950 hover:bg-lime-200"><ArrowRightLeft size={14} className="mr-1.5" /> Prepare swap</Button></div>}</section>
 
       <div className="mb-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="24h volume" value="$8.42M" delta="+18.4%" icon={BarChart3} accent="cyan" /><MetricCard label="Liquidity" value="$42.8M" delta="+6.8%" icon={Droplets} accent="lime" /><MetricCard label="Active pairs" value="1,284" delta="+94" icon={Layers3} accent="blue" /><MetricCard label="New tokens · 24h" value="47" delta="+12.6%" icon={Sparkles} accent="cyan" /></div>
 
@@ -187,7 +322,7 @@ export default function Home() {
 
         <aside className="space-y-6"><div className="glass-card rounded-2xl p-5"><div className="mb-5 flex items-start justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-cyan-300/70">Selected market</p><h2 className="mt-1 text-lg font-semibold text-white">{selectedPair.pair}</h2><p className="mt-1 font-mono text-[10px] text-slate-600">{selectedPair.address}</p></div><button onClick={() => navigator.clipboard?.writeText(selectedPair.address).then(() => toast.success("Address copied"))} className="rounded-lg p-2 text-slate-600 hover:bg-white/5 hover:text-white"><Copy size={14} /></button></div><div className="mb-5 flex items-end justify-between"><div><p className="text-2xl font-semibold text-white">{selectedPair.price}</p><p className={`mt-1 text-xs font-semibold ${selectedPair.change >= 0 ? "text-lime-300" : "text-rose-300"}`}>{selectedPair.change >= 0 ? "+" : ""}{selectedPair.change}% today</p></div><span className="flex items-center gap-1 rounded-lg bg-cyan-300/10 px-2 py-1 text-[10px] font-bold text-cyan-200"><ShieldCheck size={12} /> Verified pair</span></div><div className="grid grid-cols-2 gap-2">{[["Liquidity", selectedPair.liquidity], ["Volume 24h", selectedPair.volume], ["FDV", selectedPair.fdv], ["Transactions", selectedPair.txns]].map(([label, value]) => <div key={label} className="rounded-xl border border-white/[.06] bg-white/[.02] p-3"><p className="text-[10px] text-slate-600">{label}</p><p className="mt-1 text-xs font-semibold text-slate-200">{value}</p></div>)}</div><Button onClick={() => requestAction("Swap") } className="mt-4 h-10 w-full rounded-xl bg-cyan-300 font-bold text-slate-950 hover:bg-cyan-200"><ArrowRightLeft size={15} className="mr-2" /> Trade this pair <ExternalLink size={13} className="ml-auto" /></Button></div>
 
-          <div className="glass-card rounded-2xl p-5"><div className="mb-4 flex items-center justify-between"><div className="flex rounded-xl border border-white/[.07] bg-white/[.02] p-1"><button onClick={() => setActiveTool("swap")} className={`rounded-lg px-4 py-2 text-xs font-bold ${activeTool === "swap" ? "bg-white/10 text-white" : "text-slate-600"}`}>Swap</button><button onClick={() => setActiveTool("bridge")} className={`rounded-lg px-4 py-2 text-xs font-bold ${activeTool === "bridge" ? "bg-white/10 text-white" : "text-slate-600"}`}>Bridge</button></div><button className="rounded-lg p-2 text-slate-600 hover:text-white"><Settings2 size={15} /></button></div>{activeTool === "swap" ? <div className="space-y-3"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold text-white">Swap on ARC</p><p className="mt-1 text-[11px] text-slate-600">Uniswap-compatible routing</p></div><span className="rounded-full bg-cyan-300/10 px-2 py-1 text-[10px] font-bold text-cyan-200">0.30% fee</span></div><div className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4"><div className="mb-2 flex items-center justify-between text-[10px] text-slate-600"><span>You pay</span><span>Balance —</span></div><div className="flex items-center gap-2"><Input placeholder="0.00" className="h-9 border-0 bg-transparent p-0 text-xl font-semibold text-white shadow-none focus-visible:ring-0" /><button onClick={() => setFromToken(fromToken === "USDC" ? "ARC" : "USDC")} className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15">{fromToken}<ChevronDown size={13} /></button></div></div><div className="relative z-10 -my-1 flex justify-center"><button onClick={() => { setFromToken(toToken); setToToken(fromToken); }} className="rounded-xl border border-[#071014] bg-cyan-300 p-2 text-slate-950 shadow-[0_0_18px_rgba(103,232,249,.25)]"><ArrowDownRight size={15} /></button></div><div className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4"><div className="mb-2 flex items-center justify-between text-[10px] text-slate-600"><span>You receive</span><span>Estimated</span></div><div className="flex items-center gap-2"><Input placeholder="0.00" className="h-9 border-0 bg-transparent p-0 text-xl font-semibold text-white shadow-none focus-visible:ring-0" /><button onClick={() => setToToken(toToken === "ARC" ? "USDC" : "ARC")} className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15">{toToken}<ChevronDown size={13} /></button></div></div><div className="flex items-center justify-between px-1 text-[11px] text-slate-600"><span>Route</span><span className="flex items-center gap-1 text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> ARC → USDC → ARC</span></div><div className="flex items-center justify-between rounded-xl border border-white/[.06] bg-white/[.02] px-3 py-2 text-[11px]"><span className="text-slate-600">Max slippage</span><div className="flex gap-1">{["0.10", "0.50", "1.00"].map((value) => <button key={value} onClick={() => setSlippage(value)} className={`rounded-lg px-2 py-1 font-semibold ${slippage === value ? "bg-cyan-300/15 text-cyan-200" : "text-slate-500 hover:text-slate-200"}`}>{value}%</button>)}</div></div><Button onClick={() => requestAction("Swap transaction")} className="h-11 w-full rounded-xl bg-gradient-to-r from-cyan-300 to-blue-400 font-bold text-slate-950 hover:from-cyan-200 hover:to-blue-300">{wallet ? "Review swap" : "Connect wallet to swap"}</Button><p className="text-center text-[10px] leading-4 text-slate-600">You will review the quote and confirm in your wallet before signing.</p></div> : <div className="space-y-3"><div><p className="text-sm font-semibold text-white">Bridge assets to ARC</p><p className="mt-1 text-[11px] text-slate-600">Compare official bridge routes before you move funds.</p></div><label className="block text-[10px] font-bold uppercase tracking-widest text-slate-600">Amount</label><div className="mb-3 flex items-center gap-2 rounded-xl border border-white/[.08] bg-white/[.025] px-3"><Input value={bridgeAmount} onChange={(event) => setBridgeAmount(event.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="h-10 border-0 bg-transparent px-0 text-lg font-semibold text-white shadow-none focus-visible:ring-0" /><span className="text-xs font-semibold text-slate-500">USDC</span></div><label className="block text-[10px] font-bold uppercase tracking-widest text-slate-600">From</label><div className="flex gap-2"><select value={fromChain} onChange={(event) => setFromChain(event.target.value)} className="h-11 flex-1 rounded-xl border border-white/[.08] bg-white/[.025] px-3 text-xs text-slate-200 outline-none"><option>Ethereum</option><option>Base</option><option>Arbitrum</option><option>Solana</option></select><div className="flex h-11 items-center gap-2 rounded-xl border border-white/[.08] bg-white/[.025] px-3 text-xs font-semibold text-slate-200"><CircleDollarSign size={15} className="text-cyan-300" /> USDC</div></div><div className="relative flex justify-center py-1"><div className="h-7 w-px bg-gradient-to-b from-white/10 via-cyan-300/60 to-white/10" /><div className="absolute top-1/2 -translate-y-1/2 rounded-lg border border-cyan-300/20 bg-[#0b181d] p-1 text-cyan-300"><ArrowDownRight size={13} /></div></div><label className="block text-[10px] font-bold uppercase tracking-widest text-slate-600">To</label><div className="flex h-11 items-center justify-between rounded-xl border border-cyan-300/20 bg-cyan-300/5 px-3 text-xs font-semibold text-white"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-lime-300" />{toChain}</span><span className="text-[10px] text-lime-300">Native gas · USDC</span></div><div className="rounded-xl border border-white/[.06] bg-white/[.02] p-3"><div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-widest"><span className="text-slate-600">Bridge status</span><span className={`font-semibold ${bridgeStatus === "provider-opened" ? "text-lime-300" : bridgeStatus === "wrong-network" ? "text-rose-300" : "text-cyan-200"}`}>{bridgeStatus === "provider-opened" ? "Provider opened" : bridgeStatus === "wrong-network" ? "Wrong network" : bridgeStatus === "awaiting-wallet" ? "Awaiting wallet" : "Quote ready"}</span></div><div className="flex items-center justify-between text-[11px]"><span className="text-slate-600">Estimated receive</span><span className="font-semibold text-lime-200">{(Number(bridgeAmount || 0) * 0.997).toFixed(2)} USDC</span></div><div className="mt-2 flex items-center justify-between text-[11px]"><span className="text-slate-600">Estimated route</span><span className="font-semibold text-slate-300">{fromChain} → ARC</span></div><div className="mt-2 flex items-center justify-between text-[11px]"><span className="text-slate-600">Provider</span><span className="flex items-center gap-1 text-cyan-200"><Network size={12} /> Configured official link</span></div></div><Button onClick={() => requestAction("Bridge quote")} className="h-11 w-full rounded-xl border border-lime-300/30 bg-lime-300/10 font-bold text-lime-200 hover:bg-lime-300/20">{wallet ? "Get bridge quote" : "Connect wallet to bridge"}</Button><p className="text-center text-[10px] leading-4 text-slate-600">Bridge provider and supported routes are configurable before production launch.</p></div>}</div></aside>
+          <div className="glass-card rounded-2xl p-5"><div className="mb-4 flex items-center justify-between"><div className="flex rounded-xl border border-white/[.07] bg-white/[.02] p-1"><button onClick={() => setActiveTool("swap")} className={`rounded-lg px-4 py-2 text-xs font-bold ${activeTool === "swap" ? "bg-white/10 text-white" : "text-slate-600"}`}>Swap</button><button onClick={() => setActiveTool("bridge")} className={`rounded-lg px-4 py-2 text-xs font-bold ${activeTool === "bridge" ? "bg-white/10 text-white" : "text-slate-600"}`}>Bridge</button></div><button className="rounded-lg p-2 text-slate-600 hover:text-white"><Settings2 size={15} /></button></div>{activeTool === "swap" ? <div className="space-y-3"><div className="flex items-center justify-between"><div><p className="text-sm font-semibold text-white">Swap on ARC</p><p className="mt-1 text-[11px] text-slate-600">Uniswap-compatible routing</p></div><span className="rounded-full bg-cyan-300/10 px-2 py-1 text-[10px] font-bold text-cyan-200">0.30% fee</span></div><div className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4"><div className="mb-2 flex items-center justify-between text-[10px] text-slate-600"><span>You pay</span><span>Balance —</span></div><div className="flex items-center gap-2"><Input value={swapAmount} onChange={(event) => { setSwapAmount(event.target.value.replace(/[^0-9.]/g, "")); setSwapQuote(null); setSwapStatus("idle"); }} placeholder="0.00" className="h-9 border-0 bg-transparent p-0 text-xl font-semibold text-white shadow-none focus-visible:ring-0" /><button onClick={() => { setFromToken(fromToken === "USDC" ? "ARC" : "USDC"); setSwapQuote(null); }} className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15">{fromToken}<ChevronDown size={13} /></button></div></div><div className="relative z-10 -my-1 flex justify-center"><button onClick={() => { setFromToken(toToken); setToToken(fromToken); }} className="rounded-xl border border-[#071014] bg-cyan-300 p-2 text-slate-950 shadow-[0_0_18px_rgba(103,232,249,.25)]"><ArrowDownRight size={15} /></button></div><div className="rounded-2xl border border-white/[.08] bg-white/[.025] p-4"><div className="mb-2 flex items-center justify-between text-[10px] text-slate-600"><span>You receive</span><span>Estimated</span></div><div className="flex items-center gap-2"><Input placeholder="0.00" className="h-9 border-0 bg-transparent p-0 text-xl font-semibold text-white shadow-none focus-visible:ring-0" /><button onClick={() => setToToken(toToken === "ARC" ? "USDC" : "ARC")} className="flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/15">{toToken}<ChevronDown size={13} /></button></div></div><div className="flex items-center justify-between px-1 text-[11px] text-slate-600"><span>Route</span><span className="flex items-center gap-1 text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> {swapQuote?.tool?.name ? `${fromToken} → ${swapQuote.tool.name} → ${toToken}` : `${fromToken} → ${toToken}`}</span></div><div className="flex items-center justify-between rounded-xl border border-white/[.06] bg-white/[.02] px-3 py-2 text-[11px]"><span className="text-slate-600">Max slippage</span><div className="flex gap-1">{["0.10", "0.50", "1.00"].map((value) => <button key={value} onClick={() => setSlippage(value)} className={`rounded-lg px-2 py-1 font-semibold ${slippage === value ? "bg-cyan-300/15 text-cyan-200" : "text-slate-500 hover:text-slate-200"}`}>{value}%</button>)}</div></div><Button onClick={() => { if (swapQuote) requestAction("Swap transaction"); else void fetchSwapQuote(); }} disabled={swapQuoteLoading} className="h-11 w-full rounded-xl bg-gradient-to-r from-cyan-300 to-blue-400 font-bold text-slate-950 hover:from-cyan-200 hover:to-blue-300">{swapQuoteLoading ? "Finding LI.FI route…" : swapQuote ? "Review & confirm swap" : swapStatus === "unavailable" ? "Try another pair" : wallet ? "Get LI.FI quote" : "Connect wallet to swap"}</Button><p className="text-center text-[10px] leading-4 text-slate-600">You will review the quote and confirm in your wallet before signing.</p></div> : <div className="space-y-3"><div><p className="text-sm font-semibold text-white">Bridge assets to ARC</p><p className="mt-1 text-[11px] text-slate-600">Compare official bridge routes before you move funds.</p></div><label className="block text-[10px] font-bold uppercase tracking-widest text-slate-600">Amount</label><div className="mb-3 flex items-center gap-2 rounded-xl border border-white/[.08] bg-white/[.025] px-3"><Input value={bridgeAmount} onChange={(event) => setBridgeAmount(event.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" className="h-10 border-0 bg-transparent px-0 text-lg font-semibold text-white shadow-none focus-visible:ring-0" /><span className="text-xs font-semibold text-slate-500">USDC</span></div><label className="block text-[10px] font-bold uppercase tracking-widest text-slate-600">From</label><div className="flex gap-2"><select value={fromChain} onChange={(event) => setFromChain(event.target.value)} className="h-11 flex-1 rounded-xl border border-white/[.08] bg-white/[.025] px-3 text-xs text-slate-200 outline-none"><option>BSC</option><option>Ethereum</option><option>Base</option><option>Arbitrum</option></select><div className="flex h-11 items-center gap-2 rounded-xl border border-white/[.08] bg-white/[.025] px-3 text-xs font-semibold text-slate-200"><CircleDollarSign size={15} className="text-cyan-300" /> USDC</div></div><div className="relative flex justify-center py-1"><div className="h-7 w-px bg-gradient-to-b from-white/10 via-cyan-300/60 to-white/10" /><div className="absolute top-1/2 -translate-y-1/2 rounded-lg border border-cyan-300/20 bg-[#0b181d] p-1 text-cyan-300"><ArrowDownRight size={13} /></div></div><label className="block text-[10px] font-bold uppercase tracking-widest text-slate-600">To</label><div className="flex h-11 items-center justify-between rounded-xl border border-cyan-300/20 bg-cyan-300/5 px-3 text-xs font-semibold text-white"><span className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-lime-300" />{toChain}</span><span className="text-[10px] text-lime-300">Native gas · USDC</span></div><div className="rounded-xl border border-white/[.06] bg-white/[.02] p-3"><div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-widest"><span className="text-slate-600">Bridge status</span><span className={`font-semibold ${bridgeStatus === "provider-opened" ? "text-lime-300" : bridgeStatus === "wrong-network" ? "text-rose-300" : "text-cyan-200"}`}>{bridgeStatus === "provider-opened" ? "Submitted" : bridgeStatus === "wrong-network" ? "Wrong network" : bridgeStatus === "awaiting-wallet" ? "Awaiting wallet" : bridgeStatus === "loading" ? "Finding route…" : bridgeStatus === "unavailable" ? "No route available" : lifiQuote ? "LI.FI quote ready" : "Get a quote"}</span></div><div className="flex items-center justify-between text-[11px]"><span className="text-slate-600">Estimated receive</span><span className="font-semibold text-lime-200">{lifiQuote?.estimate?.toAmount ? (Number(lifiQuote.estimate.toAmount) / 1e6).toFixed(2) : (Number(bridgeAmount || 0) * 0.997).toFixed(2)} USDC</span></div><div className="mt-2 flex items-center justify-between text-[11px]"><span className="text-slate-600">Estimated route</span><span className="font-semibold text-slate-300">{fromChain} → ARC {lifiQuote?.tool?.name ? `· ${lifiQuote.tool.name}` : ""}</span></div><div className="mt-2 flex items-center justify-between text-[11px]"><span className="text-slate-600">Provider</span><span className="flex items-center gap-1 text-cyan-200"><Network size={12} /> {lifiQuote ? "LI.FI Router" : "LI.FI route API"}</span></div></div><Button onClick={() => { if (lifiQuote) requestAction("Bridge transaction") ; else void fetchBridgeQuote(); }} disabled={quoteLoading} className="h-11 w-full rounded-xl border border-lime-300/30 bg-lime-300/10 font-bold text-lime-200 hover:bg-lime-300/20">{quoteLoading ? "Finding LI.FI route…" : bridgeStatus === "unavailable" ? "Try another route" : lifiQuote ? "Review & confirm bridge" : wallet ? "Get LI.FI quote" : "Connect wallet to quote"}</Button><p className="text-center text-[10px] leading-4 text-slate-600">Powered by LI.FI routing; your wallet must confirm every approval and transaction.</p></div>}</div></aside>
       </div>
 
       <footer className="mt-8 flex flex-col justify-between gap-3 border-t border-white/[.06] pt-5 text-[10px] text-slate-600 sm:flex-row sm:items-center"><div className="flex items-center gap-2"><LogoMark /><span>Dex ARC · Built for the ARC Mainnet community</span></div><div className="flex items-center gap-4"><span className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 rounded-full bg-lime-300" /> Indexer operational</span><span>Chain ID 5042</span><a href="https://www.arc.io" target="_blank" rel="noreferrer" className="hover:text-cyan-300">ARC docs ↗</a></div></footer>

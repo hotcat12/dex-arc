@@ -23,3 +23,32 @@
 - [x] Add bridge quote/status presentation and configurable official provider handoff
 - [x] Add README and environment-variable deployment documentation
 - [x] Ensure client market/guard tests are discovered by Vitest
+
+- [x] Replace Beta presentation with Mainnet product branding and live-status language
+- [x] Add contract-address token import/search and token detail display
+- [x] Add real ARC Mainnet RPC/indexer configuration and live token/pair data path
+- [x] Add wallet chain switching, token approval, and explicit swap transaction flow
+- [x] Add BSC ↔ ARC bridge provider configuration, quote/status, and confirmed transaction handoff
+- [x] Add live mainnet environment/provider documentation and safety prerequisites
+- [x] Add tests for address validation, chain guards, approval guards, and transaction confirmation
+
+- [x] Verify LI.FI supported chains/API availability for ARC and BSC
+- [x] Map LI.FI quote/route/transaction responses to Dex ARC swap and bridge flows
+- [x] Integrate LI.FI only when official support is confirmed, with wallet confirmation and unavailable guards
+- [x] Add LI.FI environment/configuration documentation and tests
+
+- [x] Wire LI.FI quote/route/transaction handling into the swap module or explicitly scope LI.FI to bridge-only
+- [x] Add deterministic unsupported/no-route/wrong-chain states for LI.FI swap and bridge flows
+
+- [x] Add explicit bridge unavailable/no-route status and deterministic UI messaging
+- [x] Add tests for LI.FI bridge no-route and wrong-chain status transitions
+
+- [x] Document live scanner support as configurable-provider mode with fallback until a verified ARC indexer endpoint is supplied
+- [x] Add explicit ERC-20 allowance/approval state handling before LI.FI swap or bridge transaction submission
+- [x] Add Vitest coverage for token address validation, wallet chain guards, approval-required paths, and transaction rejection
+
+- [x] Add Vitest tests for tokenData address validation and invalid-address errors
+- [x] Add tests for wallet chain guard/switch behavior
+- [x] Add tests for approval-required and transaction-rejection decision paths
+
+- [x] Add a Vitest test for fetchTokenMetadata malformed-address error handling
