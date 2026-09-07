@@ -12,6 +12,7 @@ export type MarketRecord = {
   txns: string;
   color: string;
   address: string;
+  imageUrl?: string;
 };
 
 export function parseCompactNumber(value: string) {

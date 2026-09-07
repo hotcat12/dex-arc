@@ -58,3 +58,15 @@
 - [x] Wire live pair price, liquidity, volume, and pair selection into token search
 - [x] Add explicit no-pair/no-price and provider error states
 - [x] Add tests for provider response normalization and address lookup behavior
+
+- [x] Remove all demo/fallback market rows from the production UI
+- [x] Use verified ARC Mainnet pool results only, with real token images and live metrics
+- [x] Fix contract-address lookup for addresses such as 0x99b37b7f...
+- [x] Replace synthetic charts with real pool activity data or an explicit unavailable state
+- [x] Add regression tests for no-demo rendering, address lookup, images, and chart states
+
+- [x] Remove unconditional verified-pair wording and eliminate fake initials from token logo UI
+- [x] Add a successful recorded live lookup fixture for 0x99b37b7fccaa7a1030617b6195eb3045c523bb97
+- [x] Add deterministic tests for real token image mapping and chart unavailable state
+
+- [x] Add same-origin server proxy for A/X live pools and candles to avoid browser CORS failures
