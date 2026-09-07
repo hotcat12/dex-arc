@@ -41,7 +41,7 @@ import { type BridgeStatus } from "@/lib/lifiState";
 import { allowanceCallData, allowanceNeedsApproval, approveCallData, isNativeToken } from "@/lib/approval";
 import { fetchTokenMetadata, type TokenMetadata } from "@/lib/tokenData";
 
-const LOGO_URL = "/manus-storage/dex-arc-logo_50eb4c95.jpg";
+const LOGO_URL = "/manus-storage/dex-arc-logo-vercel_9851b9e0.jpg";
 
 /* const markets = [
   { rank: 1, pair: "ARC / USDC", ticker: "$ARC", price: "$1.0482", change: 12.84, volume: "$4.82M", liquidity: "$12.41M", fdv: "$1.05B", txns: "18.4K", color: "from-cyan-300 to-blue-600", address: "0x8a4e…c91b" },
