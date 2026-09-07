@@ -34,7 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { canSubmitBlockchainAction, filterAndSortMarkets } from "@/lib/marketUtils";
-import { fallbackMarkets, loadScannerMarkets, type ScannerMarket } from "@/lib/scannerData";
+import { fallbackMarkets, loadPoolsForToken, loadScannerMarkets, type LivePool, type ScannerMarket } from "@/lib/scannerData";
 import { ARC_MAINNET_ENABLED, connectInjectedWallet, getInjectedProvider, switchInjectedChain } from "@/lib/web3";
 import { ARC_CHAIN_ID, BSC_CHAIN_ID, getLifiQuote, type LifiQuote } from "@/lib/lifi";
 import { type BridgeStatus } from "@/lib/lifiState";
@@ -113,16 +113,17 @@ export default function Home() {
   const [swapQuoteLoading, setSwapQuoteLoading] = useState(false);
   const [swapStatus, setSwapStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
   const [liveMarkets, setLiveMarkets] = useState<ScannerMarket[]>(markets);
-  const [dataSource, setDataSource] = useState(import.meta.env.VITE_ARC_SCANNER_API_URL ? "ARC scanner provider" : "Manual/import mode");
+  const [dataSource, setDataSource] = useState(import.meta.env.VITE_ARC_SCANNER_API_URL ? "Configured ARC scanner" : "A/X Explorer live DEX index");
   const [tokenQuery, setTokenQuery] = useState("");
   const [tokenLoading, setTokenLoading] = useState(false);
   const [importedToken, setImportedToken] = useState<TokenMetadata | null>(null);
+  const [importedPools, setImportedPools] = useState<LivePool[]>([]);
 
   useEffect(() => {
     const controller = new AbortController();
     loadScannerMarkets(controller.signal).then((rows) => {
       setLiveMarkets(rows);
-      setDataSource(import.meta.env.VITE_ARC_SCANNER_API_URL ? "ARC scanner provider" : "Manual/import mode");
+      setDataSource(import.meta.env.VITE_ARC_SCANNER_API_URL ? "Configured ARC scanner" : "A/X Explorer live DEX index");
     });
     return () => controller.abort();
   }, []);
@@ -143,9 +144,16 @@ export default function Home() {
     setTokenLoading(true);
     try {
       const token = await fetchTokenMetadata(tokenQuery);
+      const pools = await loadPoolsForToken(token.address);
       setImportedToken(token);
-      toast.success("Token imported", { description: `${token.symbol} is ready to inspect${token.source === "manual" ? " once an ARC RPC is configured" : " from ARC Mainnet RPC"}.` });
+      setImportedPools(pools);
+      if (!pools.length) {
+        toast.success("Token found, but no live pair", { description: `${token.symbol} metadata is valid; A/X Explorer has no indexed DEX pool for this address yet.` });
+      } else {
+        toast.success("Live token price found", { description: `${token.symbol} · ${pools.length} ARC pair${pools.length === 1 ? "" : "s"} indexed by A/X Explorer.` });
+      }
     } catch (error) {
+      setImportedPools([]);
       toast.error("Token lookup failed", { description: error instanceof Error ? error.message : "The address could not be resolved." });
     } finally {
       setTokenLoading(false);
@@ -309,7 +317,7 @@ export default function Home() {
     <main className="relative mx-auto max-w-[1540px] px-4 pb-10 pt-7 sm:px-6 xl:px-8">
       <section className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[.2em] text-cyan-300/80"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300" /> ARC Mainnet terminal <span className="text-slate-700">/</span> {activeView}</div><h1 className="text-3xl font-semibold tracking-[-.04em] text-white sm:text-4xl">See the market <span className="gradient-text">before it moves.</span></h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">A fast, focused view of ARC liquidity, token momentum, and new pair activity—built for people who trade with context.</p></div><div className="flex items-center gap-2"><div className="hidden items-center gap-2 rounded-xl border border-white/[.07] bg-white/[.025] px-3 py-2 text-xs text-slate-500 sm:flex"><Clock3 size={14} className="text-slate-600" /> Updated 12 sec ago</div><Button variant="outline" onClick={() => toast.success("Market data refreshed", { description: "ARC Mainnet index is up to date." })} className="h-10 rounded-xl border-white/10 bg-white/[.025] text-slate-300 hover:bg-white/[.07] hover:text-white"><RefreshCw size={15} className="mr-2" /> Refresh</Button></div></section>
 
-      <section className="mb-7 glass-card overflow-hidden rounded-2xl border-cyan-300/10 p-4 sm:p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><Search size={18} /></div><div><p className="text-sm font-semibold text-white">Inspect an ARC Mainnet token</p><p className="mt-1 text-xs leading-5 text-slate-500">Paste an ERC-20 contract address to import metadata, inspect metrics, and prepare a confirmed swap.</p></div></div><div className="flex w-full gap-2 lg:max-w-xl"><Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void handleTokenLookup(); }} placeholder="0x token contract address" className="h-11 flex-1 rounded-xl border-white/[.08] bg-white/[.025] font-mono text-xs text-slate-200 placeholder:text-slate-600" /><Button onClick={() => void handleTokenLookup()} disabled={tokenLoading} className="h-11 rounded-xl bg-cyan-300 px-4 font-bold text-slate-950 hover:bg-cyan-200">{tokenLoading ? "Reading…" : "Search token"}</Button></div></div>{importedToken && <div className="mt-4 flex flex-col gap-3 rounded-xl border border-lime-300/15 bg-lime-300/[.04] p-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-lime-300" /><p className="text-xs font-semibold text-white">{importedToken.name} <span className="text-cyan-200">({importedToken.symbol})</span></p><Badge className="border border-lime-300/20 bg-lime-300/10 text-[9px] text-lime-300">{importedToken.source === "arc-rpc" ? "RPC verified" : "Address imported"}</Badge></div><p className="mt-1 font-mono text-[10px] text-slate-500">{importedToken.address} · {importedToken.decimals} decimals</p></div><Button onClick={() => requestAction(`Swap ${importedToken.symbol}`)} className="h-9 rounded-lg bg-lime-300 px-3 text-xs font-bold text-slate-950 hover:bg-lime-200"><ArrowRightLeft size={14} className="mr-1.5" /> Prepare swap</Button></div>}</section>
+      <section className="mb-7 glass-card overflow-hidden rounded-2xl border-cyan-300/10 p-4 sm:p-5"><div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200"><Search size={18} /></div><div><p className="text-sm font-semibold text-white">Inspect an ARC Mainnet token</p><p className="mt-1 text-xs leading-5 text-slate-500">Paste an ERC-20 contract address to import metadata, inspect metrics, and prepare a confirmed swap.</p></div></div><div className="flex w-full gap-2 lg:max-w-xl"><Input value={tokenQuery} onChange={(event) => setTokenQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void handleTokenLookup(); }} placeholder="0x token contract address" className="h-11 flex-1 rounded-xl border-white/[.08] bg-white/[.025] font-mono text-xs text-slate-200 placeholder:text-slate-600" /><Button onClick={() => void handleTokenLookup()} disabled={tokenLoading} className="h-11 rounded-xl bg-cyan-300 px-4 font-bold text-slate-950 hover:bg-cyan-200">{tokenLoading ? "Reading…" : "Search token"}</Button></div></div>{importedToken && <div className="mt-4 rounded-xl border border-lime-300/15 bg-lime-300/[.04] p-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><div className="flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-lime-300" /><p className="text-xs font-semibold text-white">{importedToken.name} <span className="text-cyan-200">({importedToken.symbol})</span></p><Badge className="border border-lime-300/20 bg-lime-300/10 text-[9px] text-lime-300">{importedToken.source === "arc-rpc" ? "RPC verified" : "Address imported"}</Badge></div><p className="mt-1 font-mono text-[10px] text-slate-500">{importedToken.address} · {importedToken.decimals} decimals · {importedPools.length ? `${importedPools.length} live ARC pair${importedPools.length === 1 ? "" : "s"}` : "No indexed pair"}</p></div><Button onClick={() => requestAction(`Swap ${importedToken.symbol}`)} className="h-9 rounded-lg bg-lime-300 px-3 text-xs font-bold text-slate-950 hover:bg-lime-200"><ArrowRightLeft size={14} className="mr-1.5" /> Prepare swap</Button></div>{importedPools.length > 0 && <div className="mt-3 grid gap-2 md:grid-cols-2">{importedPools.slice(0, 4).map((pool) => <button key={pool.address} onClick={() => window.open(`https://www.arcexplorer.org/dex/pair/${pool.address}`, "_blank", "noopener,noreferrer")} className="rounded-lg border border-white/[.08] bg-black/10 p-3 text-left transition hover:border-cyan-300/30"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-white">{pool.pairName}</span><span className="font-mono text-xs text-cyan-200">{pool.priceUsd == null ? "—" : `$${pool.priceUsd < 0.01 ? pool.priceUsd.toFixed(8) : pool.priceUsd.toFixed(6)}`}</span></div><div className="mt-2 flex items-center justify-between text-[10px] text-slate-500"><span>24h {pool.change24h >= 0 ? "+" : ""}{pool.change24h.toFixed(2)}%</span><span>Vol {pool.volume24hUsd ? `$${(pool.volume24hUsd / 1000).toFixed(1)}K` : "—"}</span><span>LP {pool.liquidityUsd ? `$${(pool.liquidityUsd / 1000).toFixed(1)}K` : "—"}</span></div></button>)}</div>}</div>}</section>
 
       <div className="mb-7 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="24h volume" value="$8.42M" delta="+18.4%" icon={BarChart3} accent="cyan" /><MetricCard label="Liquidity" value="$42.8M" delta="+6.8%" icon={Droplets} accent="lime" /><MetricCard label="Active pairs" value="1,284" delta="+94" icon={Layers3} accent="blue" /><MetricCard label="New tokens · 24h" value="47" delta="+12.6%" icon={Sparkles} accent="cyan" /></div>
 

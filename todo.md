@@ -52,3 +52,9 @@
 - [x] Add tests for approval-required and transaction-rejection decision paths
 
 - [x] Add a Vitest test for fetchTokenMetadata malformed-address error handling
+
+- [x] Diagnose why contract-address search returns metadata without live pair/price data
+- [x] Verify an ARC-compatible external DEX scanner/indexer API with address lookup
+- [x] Wire live pair price, liquidity, volume, and pair selection into token search
+- [x] Add explicit no-pair/no-price and provider error states
+- [x] Add tests for provider response normalization and address lookup behavior
