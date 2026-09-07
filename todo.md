@@ -74,4 +74,4 @@
 - [x] Confirm GitHub owner, repository name, visibility, and upload authorization
 - [x] Prepare repository files and Vercel configuration for GitHub deployment
 - [x] Push Dex ARC code to the authorized GitHub repository
-- [ ] Provide Vercel import and environment-variable setup instructions
+- [x] Provide Vercel import and environment-variable setup instructions
