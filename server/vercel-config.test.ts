@@ -10,9 +10,13 @@ describe("Vercel deployment configuration", () => {
     expect(config.outputDirectory).toBe("dist/public");
     expect(config.framework).toBe("vite");
     expect(config.functions).toBeUndefined();
-    expect(config.rewrites).toEqual([
-      { source: "/api/:path*", destination: "/api/index.ts" },
-      { source: "/(.*)", destination: "/index.html" },
-    ]);
+    expect(config.rewrites).toEqual([{ source: "/(.*)", destination: "/index.html" }]);
+
+    expect(readFileSync(resolve(process.cwd(), "api/arc/pools.ts"), "utf8")).toContain(
+      "https://www.arcexplorer.org/api/v1"
+    );
+    const home = readFileSync(resolve(process.cwd(), "client/src/pages/Home.tsx"), "utf8");
+    expect(home).toContain("/manus-storage/dex-arc-logo-vercel_9851b9e0.jpg");
+    expect(home).not.toContain("dex-arc-logo_50eb4c95.jpg");
   });
 });
