@@ -9,7 +9,7 @@ describe("Vercel deployment configuration", () => {
     expect(config.buildCommand).toBe("pnpm run build");
     expect(config.outputDirectory).toBe("dist/public");
     expect(config.framework).toBe("vite");
-    expect(config.functions["api/index.ts"].runtime).toBe("nodejs22.x");
+    expect(config.functions).toBeUndefined();
     expect(config.rewrites).toEqual([
       { source: "/api/:path*", destination: "/api/index.ts" },
       { source: "/(.*)", destination: "/index.html" },
