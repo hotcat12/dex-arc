@@ -19,5 +19,7 @@ describe("Vercel deployment configuration", () => {
     expect(home).toContain('aria-label="Dex ARC logo"');
     expect(home).toContain('id="dexArcLogo"');
     expect(home).not.toContain("LOGO_URL");
+    const scannerData = readFileSync(resolve(process.cwd(), "client/src/lib/scannerData.ts"), "utf8");
+    expect(scannerData).toContain("?address=${encodeURIComponent(poolAddress)}");
   });
 });
