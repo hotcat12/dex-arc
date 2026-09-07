@@ -75,3 +75,11 @@
 - [x] Prepare repository files and Vercel configuration for GitHub deployment
 - [x] Push Dex ARC code to the authorized GitHub repository
 - [x] Provide Vercel import and environment-variable setup instructions
+
+- [x] Fix Vercel deployment serving `server/_core/index.ts` source instead of the built Dex ARC application
+- [x] Add and validate Vercel build/output/routing configuration for the full-stack project
+- [x] Verify production-style build and browser route behavior after the deployment fix
+
+- [ ] Push the Vercel fix files and trigger a fresh GitHub/Vercel deployment
+- [ ] Verify the deployed Vercel URL renders Dex ARC instead of source code
+- [ ] Validate production SPA routing and API behavior after redeploy

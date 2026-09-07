@@ -40,7 +40,7 @@ pnpm build
 
 ## GitHub to Vercel
 
-Create a new GitHub repository, upload the project files, and push the repository. In Vercel, choose **New Project**, import the GitHub repository, keep the detected Node/Vite build settings, add the environment variables above, and deploy. The app can also run on another static-capable host because the frontend is a standard Vite build and the project includes the managed server template for future API work.
+Create a new GitHub repository, upload the project files, and push the repository. In Vercel, choose **New Project**, import the GitHub repository, and leave the project root at the repository root. The committed `vercel.json` explicitly runs `pnpm run build`, serves `dist/public`, routes browser requests to the SPA entrypoint, and maps `/api/*` to the Express serverless handler. Do not set the Vercel Output Directory to `server`, `server/_core`, or `dist`—use the committed configuration. Add the environment variables above, then deploy. The API handler preserves the ARC Explorer proxy and tRPC routes in Vercel deployments.
 
 ## Production checklist
 
