@@ -83,3 +83,6 @@
 - [ ] Push the Vercel fix files and trigger a fresh GitHub/Vercel deployment
 - [ ] Verify the deployed Vercel URL renders Dex ARC instead of source code
 - [ ] Validate production SPA routing and API behavior after redeploy
+
+- [ ] Fix Vercel `Function Runtimes must have a ...` validation error from the current `vercel.json`
+- [ ] Validate and push the corrected Vercel configuration for redeployment
