@@ -41,7 +41,6 @@ import { type BridgeStatus } from "@/lib/lifiState";
 import { allowanceCallData, allowanceNeedsApproval, approveCallData, isNativeToken } from "@/lib/approval";
 import { fetchTokenMetadata, type TokenMetadata } from "@/lib/tokenData";
 
-const LOGO_URL = "/manus-storage/dex-arc-logo-vercel_9851b9e0.jpg";
 
 /* const markets = [
   { rank: 1, pair: "ARC / USDC", ticker: "$ARC", price: "$1.0482", change: 12.84, volume: "$4.82M", liquidity: "$12.41M", fdv: "$1.05B", txns: "18.4K", color: "from-cyan-300 to-blue-600", address: "0x8a4e…c91b" },
@@ -76,7 +75,23 @@ function Sparkline({ positive = true }: { positive?: boolean }) {
 }
 
 function LogoMark() {
-  return <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-cyan-200/30 bg-slate-950 shadow-[0_0_30px_rgba(45,212,191,.14)]"><img src={LOGO_URL} alt="Dex ARC logo" className="h-full w-full object-cover" /><div className="absolute inset-0 bg-gradient-to-br from-cyan-300/20 via-transparent to-lime-300/20 mix-blend-screen" /></div>;
+  return (
+    <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-cyan-200/30 bg-slate-950 shadow-[0_0_30px_rgba(45,212,191,.14)]" aria-label="Dex ARC logo">
+      <svg viewBox="0 0 40 40" className="h-full w-full" role="img" aria-label="Dex ARC logo">
+        <defs>
+          <linearGradient id="dexArcLogo" x1="4" y1="4" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#67e8f9" />
+            <stop offset=".55" stopColor="#22d3ee" />
+            <stop offset="1" stopColor="#a3e635" />
+          </linearGradient>
+        </defs>
+        <path d="M9 6h10.5C28.6 6 34 11.2 34 20s-5.4 14-14.5 14H9V6Z" fill="url(#dexArcLogo)" />
+        <path d="M15 12v16h4.2c5.7 0 8.8-2.7 8.8-8s-3.1-8-8.8-8H15Z" fill="#071014" />
+        <path d="M5 10v20" stroke="#a3e635" strokeWidth="3" strokeLinecap="round" />
+      </svg>
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-cyan-300/20 via-transparent to-lime-300/20 mix-blend-screen" />
+    </div>
+  );
 }
 
 function MetricCard({ label, value, delta, icon: Icon, accent = "cyan" }: { label: string; value: string; delta: string; icon: typeof Activity; accent?: "cyan" | "lime" | "blue" }) {
