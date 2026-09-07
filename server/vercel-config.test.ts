@@ -16,7 +16,8 @@ describe("Vercel deployment configuration", () => {
       "https://www.arcexplorer.org/api/v1"
     );
     const home = readFileSync(resolve(process.cwd(), "client/src/pages/Home.tsx"), "utf8");
-    expect(home).toContain("/manus-storage/dex-arc-logo-vercel_9851b9e0.jpg");
-    expect(home).not.toContain("dex-arc-logo_50eb4c95.jpg");
+    expect(home).toContain('aria-label="Dex ARC logo"');
+    expect(home).toContain('id="dexArcLogo"');
+    expect(home).not.toContain("LOGO_URL");
   });
 });
