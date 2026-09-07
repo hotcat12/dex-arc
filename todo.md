@@ -70,3 +70,8 @@
 - [x] Add deterministic tests for real token image mapping and chart unavailable state
 
 - [x] Add same-origin server proxy for A/X live pools and candles to avoid browser CORS failures
+
+- [x] Confirm GitHub owner, repository name, visibility, and upload authorization
+- [x] Prepare repository files and Vercel configuration for GitHub deployment
+- [x] Push Dex ARC code to the authorized GitHub repository
+- [ ] Provide Vercel import and environment-variable setup instructions
