@@ -95,7 +95,7 @@ export async function loadPoolsForToken(address: string, signal?: AbortSignal) {
 }
 
 export async function loadPoolChart(poolAddress: string, signal?: AbortSignal): Promise<PoolChartPoint[]> {
-  const payload = await getJson(`${AX_API}/pools/${encodeURIComponent(poolAddress)}?days=all&interval=15m`, signal);
+  const payload = await getJson(`${AX_API}/pools?address=${encodeURIComponent(poolAddress)}&days=all&interval=15m`, signal);
   const rows = Array.isArray(payload) ? payload : payload.candles ?? payload.points ?? payload.data ?? payload.chart ?? payload.history ?? [];
   if (!Array.isArray(rows)) return [];
   return rows.map((row: any) => ({ timestamp: typeof (row.timestamp ?? row.time ?? row.t) === "string" ? Date.parse(row.timestamp ?? row.time ?? row.t) : Number(row.timestamp ?? row.time ?? row.t ?? 0), value: Number(row.close ?? row.priceUsd ?? row.price ?? row.value ?? 0), volume: row.volumeUsd == null && row.volume == null ? undefined : Number(row.volumeUsd ?? row.volume) })).filter((point: PoolChartPoint) => Number.isFinite(point.timestamp) && Number.isFinite(point.value) && point.value > 0);
