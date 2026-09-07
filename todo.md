@@ -86,3 +86,11 @@
 
 - [x] Fix Vercel `Function Runtimes must have a ...` validation error from the current `vercel.json`
 - [x] Validate and push the corrected Vercel configuration for redeployment
+
+- [x] Diagnose deployed Vercel live token, chart, and logo loading failure
+- [x] Fix live API response/routing and token image/chart rendering for production
+- [x] Validate deployed-style live data, chart, and logo behavior
+
+- [ ] Replace the Manus-only production logo path with a Vercel-safe logo asset path
+- [ ] Push dedicated Vercel ARC API handlers and logo fix to GitHub and redeploy
+- [ ] Verify deployed token rows, charts, token images, and brand logo on Vercel
