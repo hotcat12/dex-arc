@@ -21,5 +21,9 @@ describe("Vercel deployment configuration", () => {
     expect(home).not.toContain("LOGO_URL");
     const scannerData = readFileSync(resolve(process.cwd(), "client/src/lib/scannerData.ts"), "utf8");
     expect(scannerData).toContain("?address=${encodeURIComponent(poolAddress)}");
+    expect(home).toContain('data-testid="live-pair-chart"');
+    const readme = readFileSync(resolve(process.cwd(), "README.md"), "utf8");
+    expect(readme).toContain("## Vercel production verification");
+    expect(readme).toContain("data-chart-points");
   });
 });
