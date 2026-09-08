@@ -25,5 +25,8 @@ describe("Vercel deployment configuration", () => {
     const readme = readFileSync(resolve(process.cwd(), "README.md"), "utf8");
     expect(readme).toContain("## Vercel production verification");
     expect(readme).toContain("data-chart-points");
+    expect(home).not.toContain("<tr key={market.pair}");
+    expect(home).not.toContain("<div key={market.pair}");
+    expect(home).toContain("activity-${market.address || \"market\"}-${market.rank}");
   });
 });
