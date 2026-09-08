@@ -99,5 +99,9 @@
 - [x] Verify the deployed UI renders live rows, token images, inline brand logo, and chart output
 - [x] Document production browser verification for chart and image rendering
 
-- [ ] Add a unique rendered marker for real production chart output and verify it on a deployed pair page
-- [ ] Document Vercel production verification steps and observed live data/image/chart results in README
+- [x] Add a unique rendered marker for real production chart output and verify it on a deployed pair page
+- [x] Document Vercel production verification steps and observed live data/image/chart results in README
+
+- [x] Fix duplicate React keys for repeated live market pair labels such as `USDC / USDC`
+- [x] Add regression coverage for stable unique market/list keys
+- [x] Validate the fix with tests, typecheck, build, and browser console checks
