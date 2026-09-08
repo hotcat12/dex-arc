@@ -80,9 +80,9 @@
 - [x] Add and validate Vercel build/output/routing configuration for the full-stack project
 - [x] Verify production-style build and browser route behavior after the deployment fix
 
-- [ ] Push the Vercel fix files and trigger a fresh GitHub/Vercel deployment
-- [ ] Verify the deployed Vercel URL renders Dex ARC instead of source code
-- [ ] Validate production SPA routing and API behavior after redeploy
+- [x] Push the Vercel fix files and trigger a fresh GitHub/Vercel deployment
+- [x] Verify the deployed Vercel URL renders Dex ARC instead of source code
+- [x] Validate production SPA routing and API behavior after redeploy
 
 - [x] Fix Vercel `Function Runtimes must have a ...` validation error from the current `vercel.json`
 - [x] Validate and push the corrected Vercel configuration for redeployment
@@ -91,6 +91,13 @@
 - [x] Fix live API response/routing and token image/chart rendering for production
 - [x] Validate deployed-style live data, chart, and logo behavior
 
-- [ ] Replace the Manus-only production logo path with a Vercel-safe logo asset path
-- [ ] Push dedicated Vercel ARC API handlers and logo fix to GitHub and redeploy
-- [ ] Verify deployed token rows, charts, token images, and brand logo on Vercel
+- [x] Replace the Manus-only production logo path with a Vercel-safe logo asset path
+- [x] Push dedicated Vercel ARC API handlers and logo fix to GitHub and redeploy
+- [x] Verify deployed token rows, charts, token images, and brand logo on Vercel
+
+- [x] Direct-load a deployed `/pair/<pool-address>` client route and verify SPA routing
+- [x] Verify the deployed UI renders live rows, token images, inline brand logo, and chart output
+- [x] Document production browser verification for chart and image rendering
+
+- [ ] Add a unique rendered marker for real production chart output and verify it on a deployed pair page
+- [ ] Document Vercel production verification steps and observed live data/image/chart results in README
