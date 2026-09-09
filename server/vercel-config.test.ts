@@ -28,5 +28,9 @@ describe("Vercel deployment configuration", () => {
     expect(home).not.toContain("<tr key={market.pair}");
     expect(home).not.toContain("<div key={market.pair}");
     expect(home).toContain("activity-${market.address || \"market\"}-${market.rank}");
+    expect(home).toContain("function TokenAvatar");
+    expect(home).toContain("const selectedTokenAddress = importedToken?.address || selectedPair.tokenAddress");
+    expect(home).toContain("getArcV3Quote");
+    expect(home).toContain("Loading live candle history");
   });
 });
