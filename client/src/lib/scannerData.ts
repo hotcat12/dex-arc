@@ -10,6 +10,9 @@ export type ScannerMarket = {
   txns: string;
   color: string;
   address: string;
+  tokenAddress?: string;
+  tokenDecimals?: number;
+  feeTier?: number;
   imageUrl?: string;
 };
 
@@ -25,7 +28,8 @@ export type LivePool = {
   baseToken: { address: string; name: string; symbol: string; decimals: number; imageUrl?: string };
   quoteToken: { address: string; name: string; symbol: string; decimals: number; imageUrl?: string };
   protocol?: string;
-  lastSwapAt?: string;
+    lastSwapAt?: string;
+  feeTier?: number;
 };
 
 export type PoolChartPoint = { timestamp: number; value: number; volume?: number };
@@ -59,11 +63,12 @@ function normalizePool(row: any): LivePool {
     quoteToken: { address: String(row.quoteToken?.address ?? row.quoteTokenAddress ?? ""), name: String(row.quoteToken?.name ?? "Unknown"), symbol: String(row.quoteToken?.symbol ?? "USDC"), decimals: Number(row.quoteToken?.decimals ?? 6), imageUrl: tokenImageUrl(row.quoteToken) },
     protocol: row.protocol ?? row.dex ?? row.exchange,
     lastSwapAt: row.lastSwapAt ?? row.updatedAt,
+    feeTier: Number(row.feeTier ?? row.fee ?? 10000) || 10000,
   };
 }
 
 function poolToMarket(pool: LivePool, index: number): ScannerMarket {
-  return { rank: index + 1, pair: pool.pairName.replace("/", " / "), ticker: `$${pool.baseToken.symbol}`, price: money(pool.priceUsd), change: pool.change24h, volume: money(pool.volume24hUsd), liquidity: money(pool.liquidityUsd), fdv: money(pool.fdvUsd), txns: pool.swaps24h.toLocaleString(), color: index % 2 ? "from-lime-300 to-emerald-500" : "from-cyan-300 to-blue-600", address: pool.address, imageUrl: pool.baseToken.imageUrl };
+  return { rank: index + 1, pair: pool.pairName.replace("/", " / "), ticker: `$${pool.baseToken.symbol}`, price: money(pool.priceUsd), change: pool.change24h, volume: money(pool.volume24hUsd), liquidity: money(pool.liquidityUsd), fdv: money(pool.fdvUsd), txns: pool.swaps24h.toLocaleString(), color: index % 2 ? "from-lime-300 to-emerald-500" : "from-cyan-300 to-blue-600", address: pool.address, tokenAddress: pool.baseToken.address, tokenDecimals: pool.baseToken.decimals, feeTier: pool.feeTier, imageUrl: pool.baseToken.imageUrl };
 }
 
 async function getJson(url: string, signal?: AbortSignal) {
