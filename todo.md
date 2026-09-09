@@ -105,3 +105,14 @@
 - [x] Fix duplicate React keys for repeated live market pair labels such as `USDC / USDC`
 - [x] Add regression coverage for stable unique market/list keys
 - [x] Validate the fix with tests, typecheck, build, and browser console checks
+
+- [x] Diagnose why most ARC token image URLs fail or render inconsistently in production
+- [x] Diagnose why live candle chart data is unavailable or not rendered for selected pairs
+- [x] Diagnose why liquidity-backed ARC token swap quotes are unavailable through LI.FI/router
+- [x] Add resilient image fallback and verified live chart rendering for indexed pairs
+- [x] Add liquidity-aware token selection and supported-router quote flow with wallet confirmation
+- [x] Validate production image, chart, and swap states with tests and browser checks
+
+- [x] Correct the Arc v3 Quoter address used by the direct swap helper
+- [ ] Validate a real liquid ARC pool quote through the direct router path using an RPC-backed provider
+- [ ] Re-validate production-style token avatar, chart, and swap states after the quoter correction
