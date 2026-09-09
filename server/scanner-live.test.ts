@@ -21,6 +21,8 @@ describe("A/X live scanner normalization", () => {
     expect(row.volume).toBe("$190.06K");
     expect(row.liquidity).toBe("$221.40K");
     expect(row.txns).toBe("778");
+    expect(row.tokenAddress).toBe("0x2");
+    expect(row.tokenDecimals).toBe(18);
   });
 
   it("formats missing market values without inventing a price", () => {
@@ -33,6 +35,7 @@ describe("A/X live scanner normalization", () => {
     expect(row.pair).toBe("SHARCFUN / USDC");
     expect(row.price).toContain("0.000219");
     expect(row.imageUrl).toBe("https://example.com/sharcfun.png");
+    expect(row.tokenAddress).toBe("0x99b37b7fccaa7a1030617b6195eb3045c523bb97");
   });
 
   it("uses provider image URLs and rejects unavailable chart data", () => {
